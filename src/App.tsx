@@ -277,7 +277,6 @@ export default function App() {
       </main>}
 
       {tab === "settings" && <main>
-        <section className="card"><div className="section-title"><h2>生活日の設定</h2></div><label className="field"><span>日付の境界</span><select value={settings.dayBoundaryTime} onChange={(event) => void updateSettings({ dayBoundaryTime: event.target.value })}>{["00:00", "03:00", "04:00", "05:00", "06:00"].map((value) => <option key={value}>{value}</option>)}</select></label></section>
         <section className="card"><div className="section-title"><h2>変動費の設定</h2></div><div className="field-grid"><label className="field"><span>今期予算</span><input type="number" min="0" value={settings.variableExpenseBudget} onChange={(event) => void updateSettings({ variableExpenseBudget: Number(event.target.value) })} /></label><label className="field"><span>締め期間の開始日</span><input type="number" min="1" max="31" value={settings.variableExpenseStartDay} onChange={(event) => void updateSettings({ variableExpenseStartDay: Number(event.target.value) })} /></label></div></section>
         <section className="card">
           <div className="section-title"><h2>季節日記から移行</h2><p>睡眠と家計の記録だけを取り込みます</p></div>
