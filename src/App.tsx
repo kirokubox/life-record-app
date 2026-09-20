@@ -3,8 +3,8 @@ import {
   durationUntilBed, expenseError, expensePeriod, formatDuration, lastMealTime, periodExpense,
   recordExpenseSummary, sevenDaySleepAverage, sleepMetrics,
 } from "./calculations";
-import { addDays, formatDateJa, todayKey } from "./dateUtils";
-import { exportComplete, exportJson, importCompleteFile, importJsonFile } from "./backup";
+import { addDays, formatDateJa, lastNDays, todayKey, weekRange } from "./dateUtils";
+import { exportComplete, exportJson, exportRangeMarkdown, exportRangeZip, importCompleteFile, importJsonFile } from "./backup";
 import { readDiaryMigrationFile } from "./diaryMigration";
 import { preparePhoto, toMeta } from "./photos";
 import {
@@ -12,8 +12,10 @@ import {
 } from "./storage";
 import type { DiaryMigrationPreview } from "./diaryMigration";
 import type { AppSettings, LifeRecord, Meal, MealType } from "./types";
-
-const MEAL_LABEL: Record<MealType, string> = { breakfast: "朝食", lunch: "昼食", dinner: "夕食", snack: "間食" };
+import { MEAL_LABEL, canAddMeal, sortedMeals } from "./meals";
+import type { ExportRange } from "./exporters";
+import { RecentSleepCard } from "./RecentSleepCard";
+import { VariableExpenseCard } from "./VariableExpenseCard";
 
 function numberOrNull(value: string): number | null {
   if (value === "") return null;
@@ -56,6 +58,8 @@ export default function App() {
   const [storageLabel, setStorageLabel] = useState("");
   const [diaryMigration, setDiaryMigration] = useState<{ fileName: string; preview: DiaryMigrationPreview } | null>(null);
   const [migrationBusy, setMigrationBusy] = useState(false);
+  const [exportRange, setExportRange] = useState<ExportRange>(() => weekRange(todayKey()));
+  const [exportPreset, setExportPreset] = useState("week");
   const jsonInput = useRef<HTMLInputElement>(null);
   const zipInput = useRef<HTMLInputElement>(null);
   const diaryInput = useRef<HTMLInputElement>(null);
@@ -118,6 +122,7 @@ export default function App() {
   }
 
   function addMeal(type: MealType) {
+    if (!canAddMeal(record.meals, type)) return;
     const meal: Meal = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, type, time: "", note: "" };
     patch({ meals: [...record.meals, meal] });
   }
@@ -203,6 +208,8 @@ export default function App() {
   const period = settings ? expensePeriod(todayKey(), settings.variableExpenseStartDay) : null;
   const spent = period ? periodExpense(records, period) : 0;
   const remaining = settings ? settings.variableExpenseBudget - spent : 0;
+  const exportRecordCount = records.filter((item) => item.date >= exportRange.start && item.date <= exportRange.end).length;
+  const exportPhotoCount = records.filter((item) => item.date >= exportRange.start && item.date <= exportRange.end).reduce((sum, item) => sum + item.meals.filter((meal) => meal.photoId).length + (item.facePhoto ? 1 : 0), 0);
 
   if (!settings) return <main className="app-shell"><p>{status}</p></main>;
 
@@ -230,10 +237,10 @@ export default function App() {
 
         <section className="card">
           <div className="section-title"><span className="section-icon meal-icon">⌁</span><div><h2>食事</h2><p>写真と短いメモだけ</p></div></div>
-          <div className="quick-buttons">{(Object.keys(MEAL_LABEL) as MealType[]).map((type) => <button key={type} onClick={() => addMeal(type)}>＋ {MEAL_LABEL[type]}</button>)}</div>
+          <div className="quick-buttons">{(Object.keys(MEAL_LABEL) as MealType[]).map((type) => { const added = !canAddMeal(record.meals, type); return <button key={type} disabled={added} onClick={() => addMeal(type)}>{added ? `${MEAL_LABEL[type]} 済` : `＋ ${MEAL_LABEL[type]}`}</button>; })}</div>
           <div className="meal-list">
-            {record.meals.map((meal) => <article className="meal-row" key={meal.id}>
-              <div className="meal-photo"><PhotoThumb id={meal.photoId} alt={`${MEAL_LABEL[meal.type]}の写真`} /><label className="photo-action">写真<input type="file" accept="image/*" capture="environment" onChange={(event) => void attachMealPhoto(meal, event.target.files?.[0])} /></label></div>
+            {sortedMeals(record.meals).map((meal) => <article className="meal-row" key={meal.id}>
+              <div className="meal-photo"><PhotoThumb id={meal.photoId} alt={`${MEAL_LABEL[meal.type]}の写真`} /><label className="photo-action">写真<input type="file" accept="image/*" onChange={(event) => void attachMealPhoto(meal, event.target.files?.[0])} /></label></div>
               <div className="meal-fields"><strong>{MEAL_LABEL[meal.type]}</strong><input type="time" value={meal.time} onChange={(event) => patchMeal(meal.id, { time: event.target.value })} /><input type="text" placeholder="食べたもの" value={meal.note} onChange={(event) => patchMeal(meal.id, { note: event.target.value })} /></div>
               <button className="icon-button" onClick={() => void removeMeal(meal.id)} aria-label="食事を削除">×</button>
             </article>)}
@@ -249,7 +256,7 @@ export default function App() {
 
         <section className="card face-card">
           <div className="section-title"><span className="section-icon face-icon">○</span><div><h2>顔</h2><p>評価せず、写真そのものを残す</p></div></div>
-          <div className="face-layout"><PhotoThumb id={record.facePhoto?.id} alt="今日の顔写真" /><label className="primary-action">{record.facePhoto ? "撮り直す" : "顔写真を追加"}<input type="file" accept="image/*" capture="user" onChange={(event) => void attachFacePhoto(event.target.files?.[0])} /></label></div>
+          <div className="face-layout"><PhotoThumb id={record.facePhoto?.id} alt="今日の顔写真" /><label className="primary-action">{record.facePhoto ? "写真を変える" : "顔写真を追加"}<input type="file" accept="image/*" onChange={(event) => void attachFacePhoto(event.target.files?.[0])} /></label></div>
           {record.facePhoto && <p className="hint">登録 {new Date(record.facePhoto.createdAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</p>}
         </section>
 
@@ -266,8 +273,9 @@ export default function App() {
       </main>}
 
       {tab === "review" && <main>
-        <section className="review-hero"><p>直近7日平均</p><strong>{formatDuration(sevenDaySleepAverage(records, settings.dayBoundaryTime))}</strong><span>睡眠（仮眠込み）</span></section>
-        <section className="card"><div className="section-title"><h2>今期の変動費</h2></div><div className="budget-bar"><div style={{ width: `${Math.min(100, settings.variableExpenseBudget ? spent / settings.variableExpenseBudget * 100 : 0)}%` }} /></div><div className="metric-row"><div><span>使用</span><strong>{money(spent)}</strong></div><div><span>{remaining >= 0 ? "残額" : "超過"}</span><strong>{money(Math.abs(remaining))}</strong></div></div>{period && <p className="hint">{period.start}〜{period.end}</p>}</section>
+        <RecentSleepCard records={records} boundary={settings.dayBoundaryTime} onOpenDate={(target) => { setDate(target); setTab("day"); }} />
+        <VariableExpenseCard records={records} settings={settings} today={todayKey()} />
+        <section className="card"><div className="metric-row"><div><span>使用</span><strong>{money(spent)}</strong></div><div><span>{remaining >= 0 ? "残額" : "超過"}</span><strong>{money(Math.abs(remaining))}</strong></div></div>{period && <p className="hint">{period.start}〜{period.end}</p>}</section>
         <section className="card"><div className="section-title"><h2>最近の記録</h2></div><div className="timeline">{recent.map((item) => {
           const metric = sleepMetrics(item, byDate.get(addDays(item.date, -1)), settings.dayBoundaryTime);
           return <button className="timeline-day" key={item.date} onClick={() => { setDate(item.date); setTab("day"); }}><span>{formatDateJa(item.date)}</span><strong>{formatDuration(metric.totalMinutes)}</strong><small>{item.meals.length}食・{money(item.variableExpenseTotal)}</small></button>;
@@ -278,6 +286,7 @@ export default function App() {
 
       {tab === "settings" && <main>
         <section className="card"><div className="section-title"><h2>変動費の設定</h2></div><div className="field-grid"><label className="field"><span>今期予算</span><input type="number" min="0" value={settings.variableExpenseBudget} onChange={(event) => void updateSettings({ variableExpenseBudget: Number(event.target.value) })} /></label><label className="field"><span>締め期間の開始日</span><input type="number" min="1" max="31" value={settings.variableExpenseStartDay} onChange={(event) => void updateSettings({ variableExpenseStartDay: Number(event.target.value) })} /></label></div></section>
+        <section className="card export-card"><div className="section-title"><h2>AI分析用の書き出し</h2><p>指定期間の記録をMarkdownで保存できます</p></div><div className="quick-buttons export-presets"><button className={exportPreset === "week" ? "selected" : ""} onClick={() => { const range = weekRange(todayKey()); setExportRange(range); setExportPreset("week"); }}>先週（月〜日）</button><button className={exportPreset === "7days" ? "selected" : ""} onClick={() => { setExportRange(lastNDays(todayKey(), 7)); setExportPreset("7days"); }}>直近7日</button><button className={exportPreset === "period" ? "selected" : ""} onClick={() => { const next = expensePeriod(todayKey(), settings.variableExpenseStartDay); setExportRange(next); setExportPreset("period"); }}>今期</button><button className={exportPreset === "custom" ? "selected" : ""} onClick={() => setExportPreset("custom")}>任意</button></div><div className="field-grid"><label className="field"><span>開始日</span><input type="date" value={exportRange.start} disabled={exportPreset !== "custom"} onChange={(event) => setExportRange((range) => ({ ...range, start: event.target.value }))} /></label><label className="field"><span>終了日</span><input type="date" value={exportRange.end} disabled={exportPreset !== "custom"} onChange={(event) => setExportRange((range) => ({ ...range, end: event.target.value }))} /></label></div><p className="hint">{exportRange.start <= exportRange.end ? `${exportRecordCount}日分・${exportPhotoCount}枚` : "期間が不正です"}</p><div className="stack-actions"><button disabled={exportRange.start > exportRange.end || exportRecordCount === 0} onClick={() => void exportRangeMarkdown(exportRange)}>Markdownで保存</button><button className="primary" disabled={exportRange.start > exportRange.end || exportRecordCount === 0} onClick={() => void exportRangeZip(exportRange)}>写真を含むZIPで保存</button></div></section>
         <section className="card">
           <div className="section-title"><h2>季節日記から移行</h2><p>睡眠と家計の記録だけを取り込みます</p></div>
           <div className="stack-actions"><button disabled={migrationBusy} onClick={() => diaryInput.current?.click()}>{migrationBusy ? "確認中…" : "季節日記のJSONを選ぶ"}</button></div>

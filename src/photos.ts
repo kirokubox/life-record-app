@@ -51,7 +51,3 @@ export function toMeta(photo: StoredPhoto): PhotoMeta {
   const { blob: _blob, date: _date, ...meta } = photo;
   return meta;
 }
-
-export function photoExtension(mime: string): string {
-  return mime === "image/webp" ? "webp" : mime === "image/png" ? "png" : "jpg";
-}
