@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.test-build/
+*.log
+*.json.bak
+life-record-backup-*.json
+life-record-photo-backup-*.zip

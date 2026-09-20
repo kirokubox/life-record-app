@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "rootDir": ".",
+    "outDir": ".test-build"
+  },
+  "include": ["src/types.ts", "src/dateUtils.ts", "src/calculations.ts", "src/zip.ts", "tests/calculations.test.ts", "tests/zip.test.ts"]
+}

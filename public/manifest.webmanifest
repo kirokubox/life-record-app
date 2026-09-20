@@ -1,0 +1,15 @@
+{
+  "name": "生活記録",
+  "short_name": "生活記録",
+  "description": "睡眠・食事・顔写真・生活イベント・変動費を日単位で残す自分用アプリ",
+  "start_url": "/life-record-app/",
+  "scope": "/life-record-app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f0e7",
+  "theme_color": "#f6f1e7",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
