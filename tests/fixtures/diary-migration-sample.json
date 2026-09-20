@@ -1,0 +1,37 @@
+{
+  "appName": "Yuki Diary App",
+  "version": "test",
+  "exportedAt": "2026-09-20T12:00:00.000Z",
+  "settings": {
+    "dayBoundaryTime": "05:00",
+    "variableExpenseBudget": 110000,
+    "variableExpenseStartDay": 25
+  },
+  "entries": [
+    {
+      "id": "2026-09-18",
+      "date": "2026-09-18",
+      "wakeUpTime": "07:10",
+      "bedTime": "01:20",
+      "sleepHours": 6.5,
+      "napMinutes": 42,
+      "everydayExpense": 1200,
+      "satisfactionExpense": 800,
+      "regretExpense": 300,
+      "body": "この本文は移行しません",
+      "photos": []
+    },
+    {
+      "id": "2026-09-17",
+      "date": "2026-09-17",
+      "wakeUpTime": "08:00",
+      "sleepHours": 7,
+      "napHours": 0.5,
+      "everydayExpense": null,
+      "satisfactionExpense": null,
+      "regretExpense": null,
+      "body": "この本文も移行しません",
+      "photos": []
+    }
+  ]
+}

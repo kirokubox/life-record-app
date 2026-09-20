@@ -8,5 +8,5 @@
     "rootDir": ".",
     "outDir": ".test-build"
   },
-  "include": ["src/types.ts", "src/dateUtils.ts", "src/calculations.ts", "src/zip.ts", "tests/calculations.test.ts", "tests/zip.test.ts"]
+  "include": ["src/types.ts", "src/dateUtils.ts", "src/calculations.ts", "src/diaryMigration.ts", "src/zip.ts", "tests/calculations.test.ts", "tests/diaryMigration.test.ts", "tests/zip.test.ts"]
 }

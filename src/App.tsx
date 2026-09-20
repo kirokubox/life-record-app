@@ -5,10 +5,12 @@ import {
 } from "./calculations";
 import { addDays, formatDateJa, todayKey } from "./dateUtils";
 import { exportComplete, exportJson, importCompleteFile, importJsonFile } from "./backup";
+import { readDiaryMigrationFile } from "./diaryMigration";
 import { preparePhoto, toMeta } from "./photos";
 import {
   createEmptyRecord, deletePhoto, getAllRecords, getPhoto, getSettings, photoStats, putPhoto, saveRecord, saveSettings,
 } from "./storage";
+import type { DiaryMigrationPreview } from "./diaryMigration";
 import type { AppSettings, LifeRecord, Meal, MealType } from "./types";
 
 const MEAL_LABEL: Record<MealType, string> = { breakfast: "朝食", lunch: "昼食", dinner: "夕食", snack: "間食" };
@@ -52,8 +54,11 @@ export default function App() {
   const [status, setStatus] = useState("読み込み中…");
   const [ready, setReady] = useState(false);
   const [storageLabel, setStorageLabel] = useState("");
+  const [diaryMigration, setDiaryMigration] = useState<{ fileName: string; preview: DiaryMigrationPreview } | null>(null);
+  const [migrationBusy, setMigrationBusy] = useState(false);
   const jsonInput = useRef<HTMLInputElement>(null);
   const zipInput = useRef<HTMLInputElement>(null);
+  const diaryInput = useRef<HTMLInputElement>(null);
   const skipNextSave = useRef(true);
 
   useEffect(() => {
@@ -158,8 +163,40 @@ export default function App() {
   async function refreshAfterImport(message: string) {
     const loaded = await getAllRecords();
     setRecords(loaded);
+    skipNextSave.current = true;
     setRecord(loaded.find((item) => item.date === date) ?? createEmptyRecord(date));
     setStatus(message);
+  }
+
+  async function previewDiaryMigration(file?: File) {
+    if (!file) return;
+    setMigrationBusy(true);
+    try {
+      const preview = await readDiaryMigrationFile(file, await getAllRecords());
+      setDiaryMigration({ fileName: file.name, preview });
+      setStatus("季節日記の移行内容を確認してください");
+    } catch (error) {
+      setDiaryMigration(null);
+      setStatus(error instanceof Error ? error.message : "季節日記のJSONを読み込めませんでした");
+    } finally {
+      setMigrationBusy(false);
+      if (diaryInput.current) diaryInput.current.value = "";
+    }
+  }
+
+  async function applyDiaryMigration() {
+    if (!diaryMigration || diaryMigration.preview.recordsToSave.length === 0) return;
+    setMigrationBusy(true);
+    try {
+      for (const item of diaryMigration.preview.recordsToSave) await saveRecord(item);
+      const { newRecords, mergedRecords, conflictDays } = diaryMigration.preview;
+      setDiaryMigration(null);
+      await refreshAfterImport(`季節日記から新規${newRecords}日・既存${mergedRecords}日を移行${conflictDays ? `（競合${conflictDays}日は既存値を保持）` : ""}`);
+    } catch (error) {
+      setStatus(`移行失敗: ${String(error)}`);
+    } finally {
+      setMigrationBusy(false);
+    }
   }
 
   const recent = records.slice(0, 14);
@@ -242,6 +279,26 @@ export default function App() {
       {tab === "settings" && <main>
         <section className="card"><div className="section-title"><h2>生活日の設定</h2></div><label className="field"><span>日付の境界</span><select value={settings.dayBoundaryTime} onChange={(event) => void updateSettings({ dayBoundaryTime: event.target.value })}>{["00:00", "03:00", "04:00", "05:00", "06:00"].map((value) => <option key={value}>{value}</option>)}</select></label></section>
         <section className="card"><div className="section-title"><h2>変動費の設定</h2></div><div className="field-grid"><label className="field"><span>今期予算</span><input type="number" min="0" value={settings.variableExpenseBudget} onChange={(event) => void updateSettings({ variableExpenseBudget: Number(event.target.value) })} /></label><label className="field"><span>締め期間の開始日</span><input type="number" min="1" max="31" value={settings.variableExpenseStartDay} onChange={(event) => void updateSettings({ variableExpenseStartDay: Number(event.target.value) })} /></label></div></section>
+        <section className="card">
+          <div className="section-title"><h2>季節日記から移行</h2><p>睡眠と家計の記録だけを取り込みます</p></div>
+          <div className="stack-actions"><button disabled={migrationBusy} onClick={() => diaryInput.current?.click()}>{migrationBusy ? "確認中…" : "季節日記のJSONを選ぶ"}</button></div>
+          <p className="hint">季節日記の「通常JSON保存」で作ったファイルを使います。日記本文・写真・気分・タグ・らくがきは移しません。</p>
+          <input ref={diaryInput} hidden type="file" accept="application/json,.json" onChange={(event) => void previewDiaryMigration(event.target.files?.[0])} />
+          {diaryMigration && <div className="migration-preview" aria-live="polite">
+            <strong>{diaryMigration.fileName}</strong>
+            <dl>
+              <div><dt>元の日記</dt><dd>{diaryMigration.preview.sourceEntries}日</dd></div>
+              <div><dt>対象あり</dt><dd>{diaryMigration.preview.relevantEntries}日</dd></div>
+              <div><dt>新規追加</dt><dd>{diaryMigration.preview.newRecords}日</dd></div>
+              <div><dt>既存へ補完</dt><dd>{diaryMigration.preview.mergedRecords}日</dd></div>
+              <div><dt>変更なし</dt><dd>{diaryMigration.preview.unchangedRecords}日</dd></div>
+              <div><dt>競合</dt><dd>{diaryMigration.preview.conflictDays}日</dd></div>
+            </dl>
+            <p>起床 {diaryMigration.preview.importedFields.wakeTime}件・就寝 {diaryMigration.preview.importedFields.bedTime}件・仮眠 {diaryMigration.preview.importedFields.napMinutes}件・旧睡眠時間 {diaryMigration.preview.importedFields.legacySleepHours}件・家計 {diaryMigration.preview.importedFields.expenses}件</p>
+            {diaryMigration.preview.warnings.map((warning) => <p className="migration-warning" key={warning}>{warning}</p>)}
+            <div className="preview-actions"><button onClick={() => setDiaryMigration(null)}>やめる</button><button className="primary" disabled={migrationBusy || diaryMigration.preview.recordsToSave.length === 0} onClick={() => void applyDiaryMigration()}>この内容で移行</button></div>
+          </div>}
+        </section>
         <section className="card"><div className="section-title"><h2>バックアップと復元</h2><p>通常JSONに画像本体は含まれません</p></div><div className="stack-actions"><button onClick={() => void exportJson()}>通常データをJSON保存</button><button className="primary" onClick={() => void exportComplete()}>写真を含む完全ZIP保存</button><button onClick={() => jsonInput.current?.click()}>JSONから追加復元</button><button onClick={() => zipInput.current?.click()}>完全ZIPから追加復元</button><button onClick={() => void photoStats().then((value) => setStorageLabel(`${value.count}枚・${(value.bytes / 1024 / 1024).toFixed(1)}MB`))}>写真の保存容量を確認</button></div><p className="hint">{storageLabel || "既存の日付は上書きせず、新しい日だけ追加します。完全ZIPは写真だけ失った場合の復元にも使えます。"}</p>
           <input ref={jsonInput} hidden type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importJsonFile(file).then((r) => refreshAfterImport(`${r.added}日追加・${r.skipped}日スキップ`)).catch((e) => setStatus(String(e))); }} />
           <input ref={zipInput} hidden type="file" accept="application/zip,.zip" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importCompleteFile(file).then((r) => refreshAfterImport(`${r.added}日・写真${r.photos}枚を復元`)).catch((e) => setStatus(String(e))); }} />
