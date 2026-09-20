@@ -2,6 +2,8 @@
 
 睡眠、食事、睡眠周辺の生活イベント、顔写真、変動費を1日単位で残し、あとから関係を振り返るための自分用Webアプリです。健康状態の採点や生活の矯正は行いません。
 
+公開URL：<https://kirokubox.github.io/life-record-app/>
+
 ## 開発
 
 ```powershell
