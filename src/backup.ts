@@ -1,5 +1,5 @@
 import { getAllPhotos, getAllRecords, getPhoto, getSettings, putPhoto, saveRecord, saveSettings } from "./storage";
-import { buildRangeMarkdown, collectRangePhotos, photoExtension, recordsInRange, type ExportRange } from "./exporters";
+import { buildRangeMarkdown, collectRangePhotos, exportFileBase, photoExtension, recordsInRange, type ExportKind, type ExportRange } from "./exporters";
 import type { LifeRecordExport, StoredPhoto } from "./types";
 import { createZipBlob, readZipEntries } from "./zip";
 
@@ -90,8 +90,8 @@ export async function importCompleteFile(file: File) {
   return { ...result, photos };
 }
 
-function rangeFileName(range: ExportRange, extension: string): string {
-  return `life-record-${range.start}_${range.end}.${extension}`;
+function rangeFileName(kind: ExportKind, range: ExportRange, extension: string): string {
+  return `${exportFileBase(kind, range)}.${extension}`;
 }
 
 function exportedAtLabel(): string {
@@ -99,19 +99,19 @@ function exportedAtLabel(): string {
 }
 
 // 週次でAIに読ませる用。画像は含めず、テキストだけを渡したいとき
-export async function exportRangeMarkdown(range: ExportRange) {
+export async function exportRangeMarkdown(range: ExportRange, kind: ExportKind) {
   const [records, settings] = await Promise.all([getAllRecords(), getSettings()]);
   const text = buildRangeMarkdown(records, settings, range, { includePhotoPaths: false, exportedAt: exportedAtLabel() });
-  download(new Blob([text], { type: "text/markdown;charset=utf-8" }), rangeFileName(range, "md"));
+  download(new Blob([text], { type: "text/markdown;charset=utf-8" }), rangeFileName(kind, range, "md"));
   return { days: recordsInRange(records, range).length, photos: 0 };
 }
 
 // 同じMarkdownに、その期間の写真を添えたZIP。Markdown内のパスとZIPの中身は collectRangePhotos で揃える
-export async function exportRangeZip(range: ExportRange) {
+export async function exportRangeZip(range: ExportRange, kind: ExportKind) {
   const [records, settings] = await Promise.all([getAllRecords(), getSettings()]);
   const text = buildRangeMarkdown(records, settings, range, { includePhotoPaths: true, exportedAt: exportedAtLabel() });
   const files = [
-    { path: rangeFileName(range, "md"), blob: new Blob([text], { type: "text/markdown;charset=utf-8" }) },
+    { path: rangeFileName(kind, range, "md"), blob: new Blob([text], { type: "text/markdown;charset=utf-8" }) },
     { path: "README.txt", blob: new Blob(["生活記録の期間書き出しです。顔写真・食事写真を含むため、GitHubやSNSへ公開しないでください。"], { type: "text/plain;charset=utf-8" }) },
   ];
   let photos = 0;
@@ -121,6 +121,6 @@ export async function exportRangeZip(range: ExportRange) {
     files.push({ path: ref.path, blob: photo.blob });
     photos += 1;
   }
-  download(await createZipBlob(files, new Date()), rangeFileName(range, "zip"));
+  download(await createZipBlob(files, new Date()), rangeFileName(kind, range, "zip"));
   return { days: recordsInRange(records, range).length, photos };
 }

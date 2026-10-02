@@ -1,4 +1,4 @@
-import { durationUntilBed, expensePeriod, formatDuration, lastMealTime, parseTimeMinutes, periodExpense, satisfactionExpense, sleepMetrics } from "./calculations.js";
+import { durationUntilBed, formatDuration, lastMealTime, parseTimeMinutes, sleepMetrics } from "./calculations.js";
 import { formatClock } from "./chartData.js";
 import { addDays, formatTableDate } from "./dateUtils.js";
 import { MEAL_LABEL, sortedMeals } from "./meals.js";
@@ -19,7 +19,16 @@ export interface RangePhotoRef {
 
 export interface MarkdownOptions {
   includePhotoPaths: boolean;
-  exportedAt?: string;
+  exportedAt: string;
+}
+
+export type ExportKind = "week" | "month" | "range";
+
+// 例：life-record-week-2026-09-22_2026-09-28 / life-record-month-2026-09 / life-record-range-…
+// 拡張子は付けない。MDとZIPで同じ規則を使う
+export function exportFileBase(kind: ExportKind, range: ExportRange): string {
+  if (kind === "month") return `life-record-month-${range.start.slice(0, 7)}`;
+  return `life-record-${kind}-${range.start}_${range.end}`;
 }
 
 export function photoExtension(mime: string): string {
@@ -74,10 +83,6 @@ function bedMinutesForAverage(value: string): number | null {
   return minutes < 12 * 60 ? minutes + 1440 : minutes;
 }
 
-function money(value: number | null): string {
-  return value === null ? "-" : value.toLocaleString("ja-JP");
-}
-
 function duration(value: number | null): string {
   return value === null ? "-" : formatDuration(value);
 }
@@ -95,9 +100,14 @@ export function buildRangeMarkdown(records: LifeRecord[], settings: AppSettings,
   const days = recordsInRange(records, range).map((record) => ({
     record,
     sleep: sleepMetrics(record, byDate.get(addDays(record.date, -1)), settings.dayBoundaryTime),
-    satisfaction: satisfactionExpense(record),
   }));
   const photoPaths = new Map(collectRangePhotos(records, range).map((ref) => [ref.id, ref.path]));
+
+  const facePhotoCell = (record: LifeRecord): string => {
+    if (!record.facePhoto) return "-";
+    const path = photoPaths.get(record.facePhoto.id);
+    return options.includePhotoPaths && path ? `あり（${path}）` : "あり";
+  };
 
   const totalDays = rangeDayCount(range);
   const totalSleep = average(days.map((day) => day.sleep.totalMinutes).filter((value): value is number => value !== null));
@@ -106,23 +116,14 @@ export function buildRangeMarkdown(records: LifeRecord[], settings: AppSettings,
   const wake = average(days.map((day) => parseTimeMinutes(day.record.wakeTime)).filter((value): value is number => value !== null));
   const bed = average(days.map((day) => bedMinutesForAverage(day.record.bedTime)).filter((value): value is number => value !== null));
 
-  const spentDays = days.filter((day) => day.record.variableExpenseTotal !== null);
-  const spent = spentDays.reduce((sum, day) => sum + (day.record.variableExpenseTotal ?? 0), 0);
-  const everyday = spentDays.reduce((sum, day) => sum + (day.record.everydayExpense ?? 0), 0);
-  const satisfaction = spentDays.reduce((sum, day) => sum + (day.satisfaction ?? 0), 0);
-  const regret = spentDays.reduce((sum, day) => sum + (day.record.regretExpense ?? 0), 0);
-
   const mealCount = days.reduce((sum, day) => sum + day.record.meals.length, 0);
   const mealPhotoCount = days.reduce((sum, day) => sum + day.record.meals.filter((meal) => meal.photoId).length, 0);
-
-  const period = expensePeriod(range.end, settings.variableExpenseStartDay);
-  const periodSpent = periodExpense(records, period);
-  const periodRemaining = settings.variableExpenseBudget - periodSpent;
 
   const lines: string[] = [];
   lines.push(`# 生活記録エクスポート（${range.start}〜${range.end}）`);
   lines.push("");
-  if (options.exportedAt) lines.push(`書き出し日時：${options.exportedAt}`);
+  lines.push(`対象期間：${range.start}〜${range.end}`);
+  lines.push(`書き出し日時：${options.exportedAt}`);
   lines.push(options.includePhotoPaths ? "写真はこのZIPの photos/ にあります。" : "この書き出しに画像本体は含まれません。");
   lines.push("");
 
@@ -132,18 +133,13 @@ export function buildRangeMarkdown(records: LifeRecord[], settings: AppSettings,
   lines.push(`- 睡眠（仮眠込み）の平均：${duration(totalSleep)}`);
   lines.push(`- 夜間睡眠の平均：${duration(nightSleep)}　仮眠の平均：${duration(nap)}`);
   lines.push(`- 起床の平均：${clock(wake)}　就寝の平均：${clock(bed)}`);
-  lines.push(`- 変動費の合計：${money(spent)}円（日常 ${money(everyday)}円・満足 ${money(satisfaction)}円・反省 ${money(regret)}円）`);
-  lines.push(`- 入力のあった日の1日平均：${money(spentDays.length ? Math.round(spent / spentDays.length) : null)}円（${spentDays.length}日ぶん）`);
   lines.push(`- 食事の記録：${mealCount}件（写真あり ${mealPhotoCount}件）`);
-  lines.push(
-    `- 今期（${period.start}〜${period.end}）：使用 ${money(periodSpent)}円 / 予算 ${money(settings.variableExpenseBudget)}円 → ${periodRemaining >= 0 ? `残り ${money(periodRemaining)}円` : `超過 ${money(Math.abs(periodRemaining))}円`}`,
-  );
   lines.push("");
 
   lines.push("## 日別");
   lines.push("");
-  lines.push(row(["日付", "起床", "就寝", "夜間睡眠", "仮眠", "睡眠合計", "変動費", "日常", "満足", "反省", "食事"]));
-  lines.push(row(["---", "---", "---", "---:", "---:", "---:", "---:", "---:", "---:", "---:", "---:"]));
+  lines.push(row(["日付", "起床", "就寝", "夜間睡眠", "仮眠", "睡眠合計", "食事", "顔写真"]));
+  lines.push(row(["---", "---", "---", "---:", "---:", "---:", "---:", "---"]));
   for (const day of days) {
     lines.push(row([
       formatTableDate(day.record.date),
@@ -152,25 +148,24 @@ export function buildRangeMarkdown(records: LifeRecord[], settings: AppSettings,
       duration(day.sleep.nightMinutes),
       duration(day.record.napMinutes),
       duration(day.sleep.totalMinutes),
-      money(day.record.variableExpenseTotal),
-      money(day.record.everydayExpense),
-      money(day.satisfaction),
-      money(day.record.regretExpense),
       `${day.record.meals.length}`,
+      facePhotoCell(day.record),
     ]));
   }
-  if (days.length === 0) lines.push(row(["（記録なし）", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-"]));
+  if (days.length === 0) lines.push(row(["（記録なし）", "-", "-", "-", "-", "-", "-", "-"]));
   lines.push("");
 
   lines.push("## 睡眠まわり");
   lines.push("");
-  lines.push(row(["日付", "最終食事→就寝", "入浴→就寝", "最終喫煙→就寝"]));
-  lines.push(row(["---", "---:", "---:", "---:"]));
+  lines.push(row(["日付", "最終食事→就寝", "入浴", "入浴→就寝", "最終喫煙", "最終喫煙→就寝"]));
+  lines.push(row(["---", "---:", "---:", "---:", "---:", "---:"]));
   for (const day of days) {
     lines.push(row([
       formatTableDate(day.record.date),
       duration(durationUntilBed(day.record, lastMealTime(day.record))),
+      day.record.bathTime || "-",
       duration(durationUntilBed(day.record, day.record.bathTime)),
+      day.record.lastSmokingTime || "-",
       duration(durationUntilBed(day.record, day.record.lastSmokingTime)),
     ]));
   }

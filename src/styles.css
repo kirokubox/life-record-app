@@ -13,6 +13,7 @@ h2 { margin: 0; font-size: 1.05rem; }
 .date-nav button { height: 44px; border: 0; border-radius: 14px; background: #fffaf3; color: #537160; font-size: 1.7rem; }
 .date-nav label { position: relative; text-align: center; font-weight: 700; }
 .date-nav input { position: absolute; inset: 0; opacity: 0; width: 100%; }
+.date-nav strong { text-align: center; font-weight: 700; }
 .card { margin: 12px 0; padding: 18px; border: 1px solid rgba(78, 102, 89, .12); border-radius: 22px; background: rgba(255, 253, 248, .94); box-shadow: 0 8px 28px rgba(52, 70, 60, .06); }
 .hero-card { background: linear-gradient(145deg, #f4fbf5, #fffdf8); }
 .section-title { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }

@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  durationUntilBed, expenseError, expensePeriod, formatDuration, lastMealTime, periodExpense,
-  recordExpenseSummary, sevenDaySleepAverage, sleepMetrics,
-} from "./calculations";
-import { addDays, formatDateJa, lastNDays, todayKey, weekRange } from "./dateUtils";
+import { durationUntilBed, formatDuration, lastMealTime, sleepMetrics } from "./calculations";
+import { addDays, formatDateJa, lastMonthRange, lastWeekRange, shiftMonth, shiftWeek, todayKey, weekdayJa } from "./dateUtils";
 import { exportComplete, exportJson, exportRangeMarkdown, exportRangeZip, importCompleteFile, importJsonFile } from "./backup";
 import { readDiaryMigrationFile } from "./diaryMigration";
 import { preparePhoto, toMeta } from "./photos";
@@ -13,9 +10,8 @@ import {
 import type { DiaryMigrationPreview } from "./diaryMigration";
 import type { AppSettings, LifeRecord, Meal, MealType } from "./types";
 import { MEAL_LABEL, canAddMeal, sortedMeals } from "./meals";
-import type { ExportRange } from "./exporters";
+import type { ExportKind, ExportRange } from "./exporters";
 import { RecentSleepCard } from "./RecentSleepCard";
-import { VariableExpenseCard } from "./VariableExpenseCard";
 
 function numberOrNull(value: string): number | null {
   if (value === "") return null;
@@ -23,8 +19,9 @@ function numberOrNull(value: string): number | null {
   return Number.isFinite(number) && number >= 0 ? Math.round(number) : null;
 }
 
-function money(value: number | null): string {
-  return value === null ? "未入力" : `${value.toLocaleString("ja-JP")}円`;
+function rangeLabel(range: ExportRange): string {
+  const part = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}(${weekdayJa(date)})`;
+  return `${part(range.start)}〜${part(range.end)}`;
 }
 
 function PhotoThumb({ id, alt }: { id?: string; alt: string }) {
@@ -58,8 +55,8 @@ export default function App() {
   const [storageLabel, setStorageLabel] = useState("");
   const [diaryMigration, setDiaryMigration] = useState<{ fileName: string; preview: DiaryMigrationPreview } | null>(null);
   const [migrationBusy, setMigrationBusy] = useState(false);
-  const [exportRange, setExportRange] = useState<ExportRange>(() => weekRange(todayKey()));
-  const [exportPreset, setExportPreset] = useState("week");
+  const [exportRange, setExportRange] = useState<ExportRange>(() => lastWeekRange(todayKey()));
+  const [exportPreset, setExportPreset] = useState<ExportKind>("week");
   const jsonInput = useRef<HTMLInputElement>(null);
   const zipInput = useRef<HTMLInputElement>(null);
   const diaryInput = useRef<HTMLInputElement>(null);
@@ -83,7 +80,7 @@ export default function App() {
   }, [date]);
 
   useEffect(() => {
-    if (!ready || expenseError(record)) return;
+    if (!ready) return;
     if (skipNextSave.current) {
       skipNextSave.current = false;
       return;
@@ -106,8 +103,6 @@ export default function App() {
   const previous = byDate.get(addDays(date, -1));
   const sleep = settings ? sleepMetrics(record, previous, settings.dayBoundaryTime) : null;
   const lastMeal = lastMealTime(record);
-  const expenses = recordExpenseSummary(record);
-  const error = expenseError(record);
 
   function patch(patchValue: Partial<LifeRecord>) {
     setRecord((current) => ({ ...current, ...patchValue }));
@@ -205,9 +200,6 @@ export default function App() {
   }
 
   const recent = records.slice(0, 14);
-  const period = settings ? expensePeriod(todayKey(), settings.variableExpenseStartDay) : null;
-  const spent = period ? periodExpense(records, period) : 0;
-  const remaining = settings ? settings.variableExpenseBudget - spent : 0;
   const exportRecordCount = records.filter((item) => item.date >= exportRange.start && item.date <= exportRange.end).length;
   const exportPhotoCount = records.filter((item) => item.date >= exportRange.start && item.date <= exportRange.end).reduce((sum, item) => sum + item.meals.filter((meal) => meal.photoId).length + (item.facePhoto ? 1 : 0), 0);
 
@@ -260,33 +252,20 @@ export default function App() {
           {record.facePhoto && <p className="hint">登録 {new Date(record.facePhoto.createdAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</p>}
         </section>
 
-        <section className="card">
-          <div className="section-title"><span className="section-icon money-icon">¥</span><div><h2>お金</h2><p>日単位の変動費</p></div></div>
-          <div className="money-grid">
-            <label className="field"><span>変動費全額</span><input type="number" min="0" inputMode="numeric" value={record.variableExpenseTotal ?? ""} onChange={(event) => patch({ variableExpenseTotal: numberOrNull(event.target.value) })} /></label>
-            <label className="field"><span>日常費</span><input type="number" min="0" inputMode="numeric" value={record.everydayExpense ?? ""} onChange={(event) => patch({ everydayExpense: numberOrNull(event.target.value) })} /></label>
-            <label className="field computed"><span>満足費（自動）</span><strong>{money(expenses.satisfaction)}</strong></label>
-            <label className="field"><span>反省費</span><input type="number" min="0" inputMode="numeric" value={record.regretExpense ?? ""} onChange={(event) => patch({ regretExpense: numberOrNull(event.target.value) })} /></label>
-          </div>
-          {error && <p className="error">{error}。修正するまで保存しません。</p>}
-        </section>
       </main>}
 
       {tab === "review" && <main>
         <RecentSleepCard records={records} boundary={settings.dayBoundaryTime} onOpenDate={(target) => { setDate(target); setTab("day"); }} />
-        <VariableExpenseCard records={records} settings={settings} today={todayKey()} />
-        <section className="card"><div className="metric-row"><div><span>使用</span><strong>{money(spent)}</strong></div><div><span>{remaining >= 0 ? "残額" : "超過"}</span><strong>{money(Math.abs(remaining))}</strong></div></div>{period && <p className="hint">{period.start}〜{period.end}</p>}</section>
         <section className="card"><div className="section-title"><h2>最近の記録</h2></div><div className="timeline">{recent.map((item) => {
           const metric = sleepMetrics(item, byDate.get(addDays(item.date, -1)), settings.dayBoundaryTime);
-          return <button className="timeline-day" key={item.date} onClick={() => { setDate(item.date); setTab("day"); }}><span>{formatDateJa(item.date)}</span><strong>{formatDuration(metric.totalMinutes)}</strong><small>{item.meals.length}食・{money(item.variableExpenseTotal)}</small></button>;
+          return <button className="timeline-day" key={item.date} onClick={() => { setDate(item.date); setTab("day"); }}><span>{formatDateJa(item.date)}</span><strong>{formatDuration(metric.totalMinutes)}</strong><small>{item.meals.length}食</small></button>;
         })}</div></section>
         <section className="card"><div className="section-title"><h2>最近の食事写真</h2></div><div className="photo-grid">{recent.flatMap((item) => item.meals.filter((meal) => meal.photoId).map((meal) => <button key={meal.photoId} onClick={() => { setDate(item.date); setTab("day"); }}><PhotoThumb id={meal.photoId} alt={meal.note || MEAL_LABEL[meal.type]} /><span>{item.date.slice(5)} {MEAL_LABEL[meal.type]}</span></button>))}</div></section>
         <section className="card"><div className="section-title"><h2>顔写真の時系列</h2></div><div className="photo-grid face-history">{recent.filter((item) => item.facePhoto).map((item) => <button key={item.date} onClick={() => { setDate(item.date); setTab("day"); }}><PhotoThumb id={item.facePhoto?.id} alt={`${item.date}の顔写真`} /><span>{item.date.slice(5)}</span></button>)}</div></section>
       </main>}
 
       {tab === "settings" && <main>
-        <section className="card"><div className="section-title"><h2>変動費の設定</h2></div><div className="field-grid"><label className="field"><span>今期予算</span><input type="number" min="0" value={settings.variableExpenseBudget} onChange={(event) => void updateSettings({ variableExpenseBudget: Number(event.target.value) })} /></label><label className="field"><span>締め期間の開始日</span><input type="number" min="1" max="31" value={settings.variableExpenseStartDay} onChange={(event) => void updateSettings({ variableExpenseStartDay: Number(event.target.value) })} /></label></div></section>
-        <section className="card export-card"><div className="section-title"><h2>AI分析用の書き出し</h2><p>指定期間の記録をMarkdownで保存できます</p></div><div className="quick-buttons export-presets"><button className={exportPreset === "week" ? "selected" : ""} onClick={() => { const range = weekRange(todayKey()); setExportRange(range); setExportPreset("week"); }}>先週（月〜日）</button><button className={exportPreset === "7days" ? "selected" : ""} onClick={() => { setExportRange(lastNDays(todayKey(), 7)); setExportPreset("7days"); }}>直近7日</button><button className={exportPreset === "period" ? "selected" : ""} onClick={() => { const next = expensePeriod(todayKey(), settings.variableExpenseStartDay); setExportRange(next); setExportPreset("period"); }}>今期</button><button className={exportPreset === "custom" ? "selected" : ""} onClick={() => setExportPreset("custom")}>任意</button></div><div className="field-grid"><label className="field"><span>開始日</span><input type="date" value={exportRange.start} disabled={exportPreset !== "custom"} onChange={(event) => setExportRange((range) => ({ ...range, start: event.target.value }))} /></label><label className="field"><span>終了日</span><input type="date" value={exportRange.end} disabled={exportPreset !== "custom"} onChange={(event) => setExportRange((range) => ({ ...range, end: event.target.value }))} /></label></div><p className="hint">{exportRange.start <= exportRange.end ? `${exportRecordCount}日分・${exportPhotoCount}枚` : "期間が不正です"}</p><div className="stack-actions"><button disabled={exportRange.start > exportRange.end || exportRecordCount === 0} onClick={() => void exportRangeMarkdown(exportRange)}>Markdownで保存</button><button className="primary" disabled={exportRange.start > exportRange.end || exportRecordCount === 0} onClick={() => void exportRangeZip(exportRange)}>写真を含むZIPで保存</button></div></section>
+        <section className="card export-card"><div className="section-title"><h2>AI分析用の書き出し</h2><p>指定期間の記録をMarkdownで保存できます</p></div><div className="quick-buttons export-presets"><button className={exportPreset === "week" ? "selected" : ""} onClick={() => { setExportRange(lastWeekRange(todayKey())); setExportPreset("week"); }}>週</button><button className={exportPreset === "month" ? "selected" : ""} onClick={() => { setExportRange(lastMonthRange(todayKey())); setExportPreset("month"); }}>月</button><button className={exportPreset === "range" ? "selected" : ""} onClick={() => setExportPreset("range")}>任意</button></div>{exportPreset !== "range" && <div className="date-nav"><button onClick={() => setExportRange((range) => exportPreset === "week" ? shiftWeek(range, -1) : shiftMonth(range, -1))} aria-label={exportPreset === "week" ? "前の週" : "前の月"}>‹</button><strong>{rangeLabel(exportRange)}</strong><button onClick={() => setExportRange((range) => exportPreset === "week" ? shiftWeek(range, 1) : shiftMonth(range, 1))} aria-label={exportPreset === "week" ? "次の週" : "次の月"}>›</button></div>}{exportPreset === "range" && <div className="field-grid"><label className="field"><span>開始日</span><input type="date" value={exportRange.start} onChange={(event) => setExportRange((range) => ({ ...range, start: event.target.value }))} /></label><label className="field"><span>終了日</span><input type="date" value={exportRange.end} onChange={(event) => setExportRange((range) => ({ ...range, end: event.target.value }))} /></label></div>}<p className="hint">{exportRange.start <= exportRange.end ? `${exportRecordCount}日分・${exportPhotoCount}枚` : "期間が不正です"}</p><div className="stack-actions"><button disabled={exportRange.start > exportRange.end || exportRecordCount === 0} onClick={() => void exportRangeMarkdown(exportRange, exportPreset)}>Markdownで保存</button><button className="primary" disabled={exportRange.start > exportRange.end || exportRecordCount === 0} onClick={() => void exportRangeZip(exportRange, exportPreset)}>写真を含むZIPで保存</button></div></section>
         <section className="card">
           <div className="section-title"><h2>季節日記から移行</h2><p>睡眠と家計の記録だけを取り込みます</p></div>
           <div className="stack-actions"><button disabled={migrationBusy} onClick={() => diaryInput.current?.click()}>{migrationBusy ? "確認中…" : "季節日記のJSONを選ぶ"}</button></div>
