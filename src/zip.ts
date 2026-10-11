@@ -131,7 +131,7 @@ export async function createZipBlob(files: ZipInputFile[], modifiedAt: Date): Pr
 
 async function inflateRaw(blob: Blob): Promise<Blob> {
   if (typeof DecompressionStream !== "function") {
-    throw new Error("このブラウザでは圧縮されたZIPを読み込めません。");
+    throw new Error("このブラウザでは圧縮されたバックアップを読み込めません。");
   }
   const stream = blob.stream().pipeThrough(new DecompressionStream("deflate-raw"));
   return new Response(stream).blob();
@@ -146,7 +146,7 @@ async function findEndOfCentralDirectory(blob: Blob): Promise<DataView> {
       return new DataView(tail.buffer, index);
     }
   }
-  throw new Error("ZIPファイルとして読み込めませんでした。");
+  throw new Error("写真つきバックアップとして読み込めませんでした。");
 }
 
 // ZIP内のファイルを取り出す。データ部は Blob.slice で切り出すため、
@@ -180,7 +180,7 @@ export async function readZipEntries(blob: Blob): Promise<ZipEntry[]> {
     // ローカルヘッダのファイル名長・拡張フィールド長を読んでからデータ位置を決める
     const localHeader = new DataView(await blob.slice(localOffset, localOffset + 30).arrayBuffer());
     if (localHeader.byteLength < 30 || localHeader.getUint32(0, true) !== LOCAL_HEADER_SIGNATURE) {
-      throw new Error("ZIPの構造を読み取れませんでした。");
+      throw new Error("写真つきバックアップの構造を読み取れませんでした。");
     }
     const localNameLength = localHeader.getUint16(26, true);
     const localExtraLength = localHeader.getUint16(28, true);
@@ -192,7 +192,7 @@ export async function readZipEntries(blob: Blob): Promise<ZipEntry[]> {
     } else if (method === 8) {
       entries.push({ path, blob: await inflateRaw(raw) });
     } else {
-      throw new Error(`ZIP内の「${path}」は対応していない圧縮形式です。`);
+      throw new Error(`バックアップ内の「${path}」は対応していない圧縮形式です。`);
     }
   }
 

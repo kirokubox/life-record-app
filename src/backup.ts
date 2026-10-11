@@ -69,7 +69,7 @@ export async function importCompleteFile(file: File) {
   const byName = new Map(entries.map((entry) => [entry.path, entry]));
   const backup = byName.get("life-record-backup.json");
   const manifestEntry = byName.get("photos.json");
-  if (!backup || !manifestEntry) throw new Error("完全バックアップに必要なファイルがありません");
+  if (!backup || !manifestEntry) throw new Error("写真つきバックアップに必要なファイルがありません");
   const data = validate(JSON.parse(await backup.blob.text()));
   const result = await merge(data);
   const manifest = JSON.parse(await manifestEntry.blob.text()) as Array<Omit<StoredPhoto, "blob"> & { path: string }>;

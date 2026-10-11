@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { formatDuration, sevenDaySleepAverage } from "./calculations";
 import { buildSleepChartPoints, formatChartTime } from "./chartData";
-import { formatDateJa } from "./dateUtils";
+import { formatDateLabel } from "./dateUtils";
 import type { LifeRecord } from "./types";
 
 export function RecentSleepCard({ records, boundary, onOpenDate }: { records: LifeRecord[]; boundary: string; onOpenDate: (date: string) => void }) {
@@ -29,7 +29,7 @@ export function RecentSleepCard({ records, boundary, onOpenDate }: { records: Li
   const hasData = points.some((point) => point.totalHours !== null || point.wakeTime !== null);
 
   return <section className="chart-card">
-    <div className="chart-card-head"><div><h2>最近の眠り</h2><p>棒：睡眠・仮眠　線：起床</p></div><span>直近7日平均：{average}</span></div>
+    <div className="chart-card-head"><div><h2>最近の眠り</h2><p>棒：睡眠・仮眠　線：起床</p></div><span className="count">直近7日平均 {average}</span></div>
     {!hasData ? <p className="empty">最近の眠りを表示するには、起床時間と睡眠時間を記録してください。</p> : <>
       <div className="chart-wrap"><svg className="sleep-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="直近14日分の睡眠時間と起床時間">
         <rect className="sleep-chart-bg" width={width} height={height} rx="8" />
@@ -44,7 +44,7 @@ export function RecentSleepCard({ records, boundary, onOpenDate }: { records: Li
         {linePoints && <polyline className="wake-line" points={linePoints} />}
         {points.map((point, index) => point.wakeTime === null ? null : <circle className="wake-dot" cx={xOf(index)} cy={padding.top + ((wakeMax - point.wakeTime) / wakeRange) * plotHeight} key={`wake-dot-${point.date}`} r="4" />)}
       </svg></div>
-      {selected && <div className="chart-detail"><strong>{formatDateJa(selected.date)}</strong><span>就寝 {selected.bedTime ?? "-"}　起床 {formatChartTime(selected.wakeTime)}　睡眠 {selected.sleepHours === null ? "-" : `${selected.sleepHours.toFixed(1)}h`}　仮眠 {selected.napHours.toFixed(1)}h</span><button onClick={() => onOpenDate(selected.date)}>この日を開く</button></div>}
+      {selected && <div className="chart-detail"><strong>{formatDateLabel(selected.date)}</strong><span>就寝 {selected.bedTime ?? "-"}　起床 {formatChartTime(selected.wakeTime)}　睡眠 {selected.sleepHours === null ? "-" : `${selected.sleepHours.toFixed(1)}h`}　仮眠 {selected.napHours.toFixed(1)}h</span><button className="btn small" type="button" onClick={() => onOpenDate(selected.date)}>この日を開く</button></div>}
     </>}
   </section>;
 }

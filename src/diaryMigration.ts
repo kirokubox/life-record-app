@@ -95,7 +95,7 @@ export function buildDiaryMigration(
 ): DiaryMigrationPreview {
   const data = value as { appName?: unknown; entries?: unknown };
   if (!data || typeof data !== "object" || data.appName !== "Yuki Diary App" || !Array.isArray(data.entries)) {
-    throw new Error("季節日記のバックアップJSONではありません");
+    throw new Error("季節日記のバックアップではありません");
   }
 
   const preview: DiaryMigrationPreview = {

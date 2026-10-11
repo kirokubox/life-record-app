@@ -1,4 +1,4 @@
-const CACHE = "life-record-app-v2";
+const CACHE = "life-record-app-v3";
 const BASE = "/life-record-app/";
 const CORE = [BASE, `${BASE}index.html`, `${BASE}manifest.webmanifest`, `${BASE}assets/app.js`, `${BASE}assets/app.css`];
 self.addEventListener("install", (event) => { event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(CORE)).then(() => self.skipWaiting())); });

@@ -15,9 +15,16 @@ export function todayKey(): string {
   return toDateKey(new Date());
 }
 
-export function formatDateJa(dateText: string): string {
-  const date = new Date(`${dateText}T12:00:00`);
-  return new Intl.DateTimeFormat("ja-JP", { month: "long", day: "numeric", weekday: "short" }).format(date);
+// 画面に出す日付。「10月12日（月）」。今年以外は年を付ける
+export function formatDateLabel(dateText: string, today = todayKey()): string {
+  const [year, month, day] = dateText.split("-");
+  const base = `${Number(month)}月${Number(day)}日（${weekdayJa(dateText)}）`;
+  return year === today.slice(0, 4) ? base : `${Number(year)}年${base}`;
+}
+
+// 狭い場所に出す日付。「10/12(月)」
+export function formatDateShort(dateText: string): string {
+  return `${formatShortDate(dateText)}(${weekdayJa(dateText)})`;
 }
 
 export interface DateRange {
